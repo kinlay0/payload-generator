@@ -1,19 +1,23 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
-  workflow_dispatch: {}
-
-permissions:
-  contents: write
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'taggg'
+        required: true
+      release_name:
+        description: 'ver'
+        required: true
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
-      - name: checkout code
+      - name: checkout
         uses: actions/checkout@v4
 
       - name: set up Go
@@ -21,8 +25,10 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: dependencies
-        run: go mod download
+      - name: install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip rar
 
       - name: windows exe
         env:
@@ -30,18 +36,28 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: 0
         run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
-          go build -ldflags "-s -w -X main.version=${VERSION}" -o payload-generator.exe .
+          go mod download
+          go build -ldflags "-s -w -X main.version=${{ github.event.inputs.tag }}" -o payload-generator.exe .
 
-      - name: upload build
-        uses: actions/upload-artifact@v4
-        with:
-          name: payload-generator
-          path: payload-generator.exe
+      - name: rel
+        run: |
+          NAME="payload-generator"
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+          mkdir "$NAME"
+
+          cp payload-generator.exe "$NAME/"
+          cp README.md "$NAME/"
+          cp LICENSE "$NAME/"
+
+      - name: archive
+        run: |
+          NAME="payload-generator"
+          zip -qr "${NAME}.zip" "$NAME"
+
+      - name: rel2
         uses: softprops/action-gh-release@v2
         with:
-          files: payload-generator.exe
-          generate_release_notes: false
+          tag_name: ${{ github.event.inputs.tag }}
+          name: ${{ github.event.inputs.release_name }}
+          files: |
+            payload-generator.zip
